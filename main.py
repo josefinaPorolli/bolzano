@@ -5,7 +5,8 @@
 "En caso de optar por no introducir uno, se realiza una búsqueda simétrica exponencial"
 "Se aplica Bolzano"
 "Se aplica la UI"
-
+import	restricciones as r
+import BuscadorDeIntervalos as b
 def prints():
     """Imprime una tabla de funciones genéricas y sus representaciones matemáticas."""
     print("Las funciones en programación no se dictan igual que en matemáticas, por lo que se emplean representaciones a nivel código de las mismas.")
@@ -41,3 +42,13 @@ def prints():
         print(f"{each:10} -> {dict[each]}")
 
 prints()
+fn="sin(x-1)/(x-1)"
+# fn=input("Introduce la función: ")
+dominio = r.CalcularDominio(fn)
+print(f"El dominio de la función es: {dominio}")
+intervalos = b.BuscarIntervalosRaiz(fn, dominio)
+for r in intervalos:
+    if isinstance(r, tuple):
+        print(f"Intervalo: [{round(r[0],6)}, {round(r[1],6)}]")
+    else:
+        print(f"Raíz exacta: x = {round(r, 6)}")

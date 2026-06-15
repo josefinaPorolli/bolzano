@@ -5,3 +5,39 @@
 "En caso de optar por no introducir uno, se realiza una búsqueda simétrica exponencial"
 "Se aplica Bolzano"
 "Se aplica la UI"
+
+def prints():
+    """Imprime una tabla de funciones genéricas y sus representaciones matemáticas."""
+    print("Las funciones en programación no se dictan igual que en matemáticas, por lo que se emplean representaciones a nivel código de las mismas.")
+    print("Se le adjunta a usted una tabla de equivalencias entre dichas funciones y su representación:")
+    dict ={
+        "x**(1/n)": "ⁿ√x",
+        "e**x": "eˣ",
+        "log_n(x)": "logₙ(x)",
+        "ln(x)": "ln(x)",
+        "sin(x)": "sin(x)",
+        "cos(x)": "cos(x)",
+        "tan(x)": "tan(x)",
+        "asin(x)": "asin(x)",
+        "acos(x)": "acos(x)",
+        "atan(x)": "atan(x)",
+        "sec(x)": "sec(x)",
+        "csc(x)": "csc(x)",
+        "cot(x)": "cot(x)",
+        "sinh(x)": "sinh(x)",
+        "cosh(x)": "cosh(x)",
+        "tanh(x)": "tanh(x)",
+        "csch(x)": "csch(x)",
+        "sech(x)": "sech(x)",
+        "coth(x)": "coth(x)",
+        "x / y": "x / y",
+        "x * y": "x ⋅ y",
+        "x + y": "x + y",
+        "x - y": "x - y",
+        "x ** n": "xⁿ"
+    }
+    print(f"{'Comando:':14}{'Fn:'}")
+    for each in dict:
+        print(f"{each:10} -> {dict[each]}")
+
+prints()

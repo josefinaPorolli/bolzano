@@ -2,6 +2,33 @@ from sympy import *
 
 x = symbols("x")
 
+FUNCIONES_PERMITIDAS = {
+    "sqrt",
+    "log",
+    "ln",
+    "exp",
+
+    "sin",
+    "cos",
+    "tan",
+
+    "asin",
+    "acos",
+    "atan",
+
+    "sinh",
+    "cosh",
+    "tanh",
+
+    "sec",
+    "csc",
+    "cot",
+
+    "csch",
+    "sech",
+    "coth"
+}
+
 RESTRICCIONES = [
     ("sqrt", lambda a: sympify(a) >= 0),
     ("log",  lambda a: sympify(a) > 0),
@@ -94,9 +121,43 @@ def formatear_dominio(dominio):
         partes = [formatear_intervalo(dominio)]
     return "D: {" + ", ".join(partes) + "}"
 
+# def CalcularDominio(fn):
+#     condiciones = obtener_condiciones(fn)
+#     dominio = S.Reals
+#     for c in condiciones:
+#         dominio = Intersection(dominio, solve_univariate_inequality(c, x, relational=False))
+#     return formatear_dominio(dominio)
+
 def CalcularDominio(fn):
     condiciones = obtener_condiciones(fn)
     dominio = S.Reals
+
     for c in condiciones:
-        dominio = Intersection(dominio, solve_univariate_inequality(c, x, relational=False))
-    return formatear_dominio(dominio)
+        valor = simplify(c)
+
+        if valor == True:
+            continue
+
+        dominio = Intersection(
+            dominio,
+            solve_univariate_inequality(c, x, relational=False)
+        )
+
+    return dominio
+
+def intervalo_en_dominio(dominio, a, b):
+    intervalo = Interval(a, b)
+    return intervalo.is_subset(dominio)
+
+def validar_funciones(expr):
+    try:
+        expresion = sympify(expr)
+
+        for funcion in expresion.atoms(Function):
+            if funcion.func.__name__ not in FUNCIONES_PERMITIDAS:
+                return False
+
+        return True
+
+    except:
+        return False

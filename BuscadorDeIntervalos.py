@@ -1,25 +1,33 @@
 from sympy import symbols, sympify
 import math
-
 x_sym = symbols("x")
 
 def evaluar(fn, val):
     try:
-        return float(fn.subs(x_sym, val))
+        return fn.subs(x_sym, val).evalf(64)
     except:
         return None
 
 def set_funcion(fn_str):
-    return sympify(fn_str)
+    from sympy import E, pi, sin, cos, tan, asin, acos, atan, sqrt, log, exp, sinh, cosh, tanh
+    namespace = {
+        "x": x_sym, "e": E, "E": E, "pi": pi,
+        "sin": sin, "cos": cos, "tan": tan,
+        "asin": asin, "acos": acos, "atan": atan,
+        "sqrt": sqrt, "log": log, "ln": log, "exp": exp,
+        "sinh": sinh, "cosh": cosh, "tanh": tanh
+    }
+    return sympify(fn_str, locals=namespace)
 
 def es_raiz_exacta(fn, val):
     f = evaluar(fn, val)
     return f is not None and f == 0
 
-def buscar_en_9(fn, a, b):
-    paso = (b - a) / 9
+def buscar_en_99(fn, a, b):
+    paso = (b - a) / 99
     intervalos = []
-    for i in range(9):
+    encontrado = False
+    for i in range(99):
         x0 = a + i * paso
         x1 = x0 + paso
         if es_raiz_exacta(fn, x0): return [x0]
@@ -28,64 +36,65 @@ def buscar_en_9(fn, a, b):
         f1 = evaluar(fn, x1)
         if f0 is not None and f1 is not None and f0 * f1 < 0:
             intervalos.append((x0, x1))
+            encontrado = True
+    if not encontrado:
+        intervalos.append(None)
     return intervalos
 
 def buscar_exponencial_derecha(fn, a):
     if es_raiz_exacta(fn, a): return [a]
     f_a = evaluar(fn, a)
-    if f_a is None: return []
-    for n in range(12):
+    if f_a is None: return [None]
+    for n in range(32):
         b = a + 2**n
         if es_raiz_exacta(fn, b): return [b]
         f_b = evaluar(fn, b)
         if f_b is not None and f_a * f_b < 0:
             return [(a, b)]
-    return []
+    return [None]
 
 def buscar_exponencial_izquierda(fn, b):
     if es_raiz_exacta(fn, b): return [b]
     f_b = evaluar(fn, b)
-    if f_b is None: return []
-    for n in range(12):
+    if f_b is None: return [None]
+    for n in range(32):
         a = b - 2**n
         if es_raiz_exacta(fn, a): return [a]
         f_a = evaluar(fn, a)
         if f_a is not None and f_a * f_b < 0:
             return [(a, b)]
-    return []
+    return [None]
 
 def buscar_simetrico(fn):
-    if es_raiz_exacta(fn, 0): return [0]
+    if es_raiz_exacta(fn, 0):
+        return [0]
+
     f_0 = evaluar(fn, 0)
-    if f_0 is None: return []
-    intervalos = []
-    found_right = False
-    found_left = False
-    for n in range(12):
+    if f_0 is None:
+        return [None]
+
+    for n in range(32):
         delta = 2**n
-        if not found_right:
-            b = delta
-            if es_raiz_exacta(fn, b):
-                intervalos.append(b)
-                found_right = True
-            else:
-                f_b = evaluar(fn, b)
-                if f_b is not None and f_0 * f_b < 0:
-                    intervalos.append((0, b))
-                    found_right = True
-        if not found_left:
-            a = -delta
-            if es_raiz_exacta(fn, a):
-                intervalos.append(a)
-                found_left = True
-            else:
-                f_a = evaluar(fn, a)
-                if f_a is not None and f_0 * f_a < 0:
-                    intervalos.append((a, 0))
-                    found_left = True
-        if found_right and found_left:
-            break
-    return intervalos
+
+        # derecha
+        b = delta
+        if es_raiz_exacta(fn, b):
+            return [b]
+
+        f_b = evaluar(fn, b)
+        if f_b is not None and f_0 * f_b < 0:
+            return [(0, b)]
+
+        # izquierda
+        a = -delta
+        if es_raiz_exacta(fn, a):
+            return [a]
+
+        f_a = evaluar(fn, a)
+        if f_a is not None and f_0 * f_a < 0:
+            return [(a, 0)]
+
+    return [None]
 
 def BuscarIntervalosRaiz(fn_str, dominio_str):
     fn = set_funcion(fn_str)
@@ -102,7 +111,7 @@ def BuscarIntervalosRaiz(fn_str, dominio_str):
         a = -math.inf if "∞" in a_str.strip() else float(a_str.strip())
         b =  math.inf if "∞" in b_str.strip() else float(b_str.strip())
 
-        INF = 0.001
+        INF = 1e-6
 
         if a == -math.inf and b == math.inf:
             intervalos = buscar_simetrico(fn)
@@ -115,7 +124,7 @@ def BuscarIntervalosRaiz(fn_str, dominio_str):
         else:
             a_real = a + INF if left_open else a
             b_real = b - INF if right_open else b
-            intervalos = buscar_en_9(fn, a_real, b_real)
+            intervalos = buscar_en_99(fn, a_real, b_real)
 
         todos += intervalos
 

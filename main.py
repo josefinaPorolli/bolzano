@@ -12,13 +12,14 @@ a,b=0,0
 
 def prints():
     """Imprime una tabla de funciones genéricas y sus representaciones matemáticas."""
-    print("Las funciones en programación no se dictan igual que en matemáticas, por lo que se emplean representaciones a nivel código de las mismas.")
-    print("Se le adjunta a usted una tabla de equivalencias entre dichas funciones y su representación:")
-    dict ={
+    print("Las funciones en programación no se escriben igual que en matemáticas.")
+    print("A continuación se muestra una tabla de equivalencias:\n")
+
+    funciones = {
         "x**(1/n)": "ⁿ√x",
         "e**x": "eˣ",
         "log(x, n)": "logₙ(x)",
-								"sqrt(x)": "√x",
+        "sqrt(x)": "√x",
         "ln(x)": "ln(x)",
         "sin(x)": "sin(x)",
         "cos(x)": "cos(x)",
@@ -41,10 +42,13 @@ def prints():
         "x - y": "x - y",
         "x ** n": "xⁿ"
     }
-    print(f"{'Comando:':14}{'Fn:'}")
-    for each in dict:
-        print(f"{each:10} -> {dict[each]}")
 
+    print(f"{'Comando':<10} | {'Función'}")
+    print("-" * 23)
+
+    for comando, funcion in funciones.items():
+        print(f"{comando:<10} | {funcion}")
+    print()
 
 while True:
 	prints()
@@ -127,11 +131,55 @@ while True:
 			print("Ingrese nuevamente un intervalo o finalice la ejecución si quedó conforme al resultado.\n")
 		
 	except:		
-		print("Mi tomate es gei")
+		pass
 	if input("desea intentar nuevamente? (s/n): ").lower() == "s":
 		continue
 	else: 
 		print("Saliendo del programa.")
 		exit()
 
-print("ejecutan a bolzonaro")
+# Cuando se llega acá, se ejecuta el algoritmo de Bolzano
+print("="*40)
+print("DESARROLLO DEL ALGORITMO DE BOLZANO")
+print("="*40)
+
+# Para saber la cantidad de iteraciones, se solicita una tolerancia o la propia cantidad de iteraciones
+selec = ""
+tol = 0
+n = 0
+while selec not in ["1", "2"]:
+	selec = input("""¿Desea ingresar una tolerancia o una cantidad de iteraciones?
+	1) Tolerancia
+	2) Cantidad de iteraciones\n""")
+	if selec == "1":
+		while True:
+			try:
+				tol = float(input("Ingrese la tolerancia deseada: "))
+				if tol > 0:
+					n = f.cantidad_iteraciones(a, b, tol)
+					print(f"Se realizarán {n} iteraciones para alcanzar la tolerancia deseada si no se encuentra una raíz exacta.")
+					break
+				else:	print("La tolerancia debe ser un número positivo.")
+			except ValueError:	print("Debe ingresar un número válido.")
+	elif selec == "2":
+		while True:
+			try:
+				n = int(input("Ingrese la cantidad de iteraciones deseada: "))
+				if n > 0:
+					print(f"Se realizarán {n} iteraciones.")
+					break
+				else:	print("La cantidad de iteraciones debe ser un número entero positivo.")
+			except ValueError:	print("Debe ingresar un número válido.")
+	else:
+		print("Seleccione una opción válida.")
+
+resultado, historial = f.iterar(fn, a, b, n)
+
+for i, (a_i, b_i, x_i) in enumerate(historial, start=1):
+    print(f"Iteración {i}")
+    print(f"Intervalo: [{a_i}, {b_i}]")
+    print(f"x = {x_i}")
+    print(f"f(x) = {f.evaluar(fn, x_i)}")
+    print()
+
+print(f"Resultado final (raíz aproximada): x = {resultado}")

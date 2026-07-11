@@ -5,9 +5,11 @@
 "En caso de optar por no introducir uno, se realiza una búsqueda simétrica exponencial"
 "Se aplica Bolzano"
 "Se aplica la UI"
-import	restricciones as r
+import restricciones as r
 import BuscadorDeIntervalos as bu
 import funciones_bolzano as f
+import interfaz 
+import sympy as sp
 a,b=0,0
 
 def prints():
@@ -55,9 +57,12 @@ while True:
 	# fn = "log(x+5) + sqrt(x+3) - 1/x + sin(x) - (x-2)"
 	# fn = "1"
 	while True:
-		fn = input("Introduce la función a evaluar: ")
-		if r.validar_funciones(fn): break
-		print("Función inválida. Utilice la sintaxis indicada.")
+		try:
+			fn = input("Introduce la función a evaluar: ")
+			fn = r.preparar_funcion(fn)
+			break
+		except Exception:
+			print("Función inválida. Utilice la sintaxis indicada.")
 	
 	dominio = r.CalcularDominio(fn)
 	dominio_str = r.formatear_dominio(dominio)
@@ -67,8 +72,8 @@ while True:
 	if(input("¿Desea introducir un intervalo de búsqueda de raíces? (s/n): ").lower() == "s"):
 		while True:
 			try:
-				a = float(input("Ingrese el inicio del intervalo: "))
-				b = float(input("Ingrese el final del intervalo: "))
+				a = sp.Float(input("Ingrese el inicio del intervalo: "),64)
+				b = sp.Float(input("Ingrese el final del intervalo: "),64)
 
 				if r.intervalo_en_dominio(dominio, a, b):	break
 				else: print("El intervalo no pertenece al dominio.")
@@ -77,14 +82,21 @@ while True:
 	
 	else:
 		print("Se intentará encontrar automáticamente un intervalo adecuado...")
-		intervalos = bu.BuscarIntervalosRaiz(fn, dominio_str)
+		intervalos = bu.BuscarIntervalosRaiz(fn, dominio)
 
 		print("El método de Bolzano exige una función continua en el intervalo, que además tenga signos opuestos en los extremos del mismo. Por lo tanto, se han detectado los siguientes intervalos que cumplen estas condiciones, evaluando a su función introducida como una conjunción de funciones por tramos, donde a cada tramo se le ha buscado individualmente un único intervalo contenedor de raiz (o la propia raiz si accidentalmente fue hayada durante dicha búsqueda):")
-		print(intervalos)
 
 		#	Se extraen los dominios de cada tramo para mostrar al usuario
-		dominios = dominio_str[4:-1].split(", ")
-		
+		excluido = bu._excluido_de(dominio)
+		dominios = [
+			r._fmt_conjunto(
+				sp.Complement(sp.Interval(a, b, izq, der), excluido)
+				if excluido is not None
+				else sp.Interval(a, b, izq, der)
+			)
+			for a, b, izq, der in bu._intervalos_base(dominio)
+		]
+				
 		for i, item in enumerate(intervalos):
 			print(f"\n{i+1}) Para el dominio {dominios[i]}:")
 			if item is None:
@@ -115,7 +127,7 @@ while True:
 
 		item = intervalos[eleccion]
 
-		if isinstance(item, tuple):	a,b = item
+		if isinstance(item, tuple): a,b = map(lambda x: sp.Float(x,64), item)
 		else:
 			if item is None:
 				print("No había raíces detectables en ese intervalo.")
@@ -123,12 +135,12 @@ while True:
 				print(f"La raíz de ese intervalo es x = {round(item,6)}")
 
 	try: # validar que el intervalo seleccionado cumple con las condiciones de Bolzano
-		if((bu.evaluar(bu.set_funcion(fn), a) * bu.evaluar( bu.set_funcion(fn), b)))<0:
+		if((bu.evaluar(fn, a) * bu.evaluar(fn, b)))<0:
 			break
 		else:
 			print("\nEl intervalo seleccionado no es válido para practicar Bolzano.")
 			print("Debe cumplirse f(a)·f(b) < 0.")
-			print("Ingrese nuevamente un intervalo o finalice la ejecución si quedó conforme al resultado.\n")
+			print("Inténtelo nuevamente o finalice la ejecución si quedó conforme al resultado.\n")
 		
 	except:		
 		pass
@@ -154,7 +166,7 @@ while selec not in ["1", "2"]:
 	if selec == "1":
 		while True:
 			try:
-				tol = float(input("Ingrese la tolerancia deseada: "))
+				tol = sp.Float(input("Ingrese la tolerancia deseada: "),64)
 				if tol > 0:
 					n = f.cantidad_iteraciones(a, b, tol)
 					print(f"Se realizarán {n} iteraciones para alcanzar la tolerancia deseada si no se encuentra una raíz exacta.")
@@ -177,9 +189,14 @@ resultado, historial = f.iterar(fn, a, b, n)
 
 for i, (a_i, b_i, x_i) in enumerate(historial, start=1):
     print(f"Iteración {i}")
-    print(f"Intervalo: [{a_i}, {b_i}]")
-    print(f"x = {x_i}")
-    print(f"f(x) = {f.evaluar(fn, x_i)}")
+    print(f"Intervalo: [{interfaz.formato_numero(a_i)}, {interfaz.formato_numero(b_i)}]")
+    print(f"x = {interfaz.formato_numero(x_i)}")
+    print(f"f(x) = {interfaz.formato_numero(f.evaluar(fn, x_i))}")
     print()
 
-print(f"Resultado final (raíz aproximada): x = {resultado}")
+if f.evaluar(fn, resultado) == 0:
+    print(f"Resultado final: raíz exacta x = {interfaz.formato_numero(resultado)}")
+else:
+    print(f"Resultado final (raíz aproximada): x = {interfaz.formato_numero(resultado)}")
+
+interfaz.mostrar_bolzano(fn, historial, resultado)

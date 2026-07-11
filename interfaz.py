@@ -5,16 +5,25 @@ import numpy as np
 import sympy as sp
 s=0.03 #animation speed minimo 0.02
 MAX_ITER_MOSTRADAS = 25
-# ------------------------------------------------------------------
-# FIX (solo visual): el eje X ahora es RELATIVO al centro del intervalo
-# en vez de absoluto. Motivo: cuando el intervalo se hace mucho más chico
-# que la magnitud de a/b (~1e-16 veces más chico), float64 ya no puede
-# distinguir a de b como números distintos -> el eje colapsa -> diente de
-# sierra. Números CHICOS centrados en cero sí se representan con toda la
-# precisión de float64, por eso se resta el centro ANTES de castear a
-# float (en limite_x y en actualizar_funcion). El eje Y no lo toco: los
-# valores de f(x) ya son chicos cerca de la raíz, no sufren el problema.
-# ------------------------------------------------------------------
+
+RP = {
+	"base": "#232136",
+	"surface": "#2a273f",
+	"overlay": "#393552",
+	"muted": "#6e6a86",
+	"subtle": "#908caa",
+	"text": "#e0def4",
+	"love": "#eb6f92",
+	"gold": "#f6c177",
+	"rose": "#ea9a97",
+	"pine": "#3e8fb0",
+	"foam": "#9ccfd8",
+	"iris": "#c4a7e7",
+	"highlight-low": "#2a283e",
+	"highlight-med": "#44415a",
+	"highlight-high": "#56526e"
+}
+
 
 def limite_x(a, b):
     a = float(a)
@@ -126,6 +135,8 @@ def mostrar_raiz_exacta(fn, historial, resultado):
     funcion_num = crear_evaluador(fn)
 
     fig, ax = plt.subplots(figsize=(10,6))
+    fig.patch.set_facecolor(RP["base"])
+    ax.set_facecolor(RP["surface"])
 
     xs = generar_puntos(
         a - (b-a)*0.2,
@@ -139,29 +150,31 @@ def mostrar_raiz_exacta(fn, historial, resultado):
     ]
 
     ax.plot(
-        [float(i-x) for i in xs],
-        [float(y) for y in ys],
-        linewidth=2
+    [float(i-x) for i in xs],
+    [float(y) for y in ys],
+    linewidth=2,
+    color=RP["foam"]
     )
 
     ax.axhline(
         0,
-        linewidth=1
+        linewidth=1,
+        color=RP["highlight-high"]
     )
-
-    centro = (a+b)/2
 
     ax.scatter(
         [float(resultado-centro)],
         [0],
-        s=120
+        s=120,
+        color=RP["love"]
     )
 
     ax.text(
         float(resultado-centro),
         0,
         f"  Raíz exacta\n  x={formato_numero(resultado)}",
-        fontsize=12
+        fontsize=12,
+        color=RP["rose"]
     )
 
     ax.set_xlim(
@@ -178,6 +191,9 @@ def mostrar_raiz_exacta(fn, historial, resultado):
 
     ax.grid(True)
 
+    ax.title.set_color(RP["text"])
+    ax.xaxis.label.set_color(RP["text"])
+    ax.yaxis.label.set_color(RP["text"])
     plt.show()
 
 def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
@@ -314,7 +330,23 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
     )
 
     fig,ax = plt.subplots(figsize=(10,6))
+    fig.patch.set_facecolor(RP["base"])
+    ax.set_facecolor(RP["surface"])
 
+    ax.tick_params(
+        colors=RP["subtle"]
+    )
+
+    for spine in ax.spines.values():
+        spine.set_color(RP["overlay"])
+
+    ax.xaxis.label.set_color(RP["text"])
+    ax.yaxis.label.set_color(RP["text"])
+
+    ax.grid(
+        True,
+        color=RP["overlay"]
+    )
     # ================================
     # ARTISTAS FIJOS
     # ================================
@@ -322,33 +354,33 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
     linea_funcion, = ax.plot(
         [],
         [],
-        color="blue",
+        color=RP["foam"],
         linewidth=2
     )
 
 
     linea_a = ax.axvline(
         0,
-        color="gray",
+        color=RP["muted"],
         linewidth=2
     )
 
     linea_b = ax.axvline(
         0,
-        color="gray",
+        color=RP["muted"],
         linewidth=2
     )
 
 
     linea_a1 = ax.axvline(
         0,
-        color="green",
+        color=RP["pine"],
         linewidth=2
     )
 
     linea_b1 = ax.axvline(
         0,
-        color="green",
+        color=RP["pine"],
         linewidth=2
     )
 
@@ -357,7 +389,7 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
         (0,0),
         0,
         1,
-        color="green",
+        color=RP["pine"],
         alpha=0.35,
         transform=ax.get_xaxis_transform()
     )
@@ -367,7 +399,7 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
 
     eje_cero = ax.axhline(
         0,
-        color="black",
+        color=RP["subtle"],
         linewidth=1
     )
 
@@ -375,7 +407,7 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
         (0,0),
         0,
         0,
-        color="red",
+        color=RP["love"],
         linewidth=3
     )
 
@@ -385,15 +417,17 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
         0,
         0,
         "",
-        color="red",
+        color=RP["rose"],
         fontsize=12,
         ha="center",
         va="bottom"
     )
 
-    
-    ax.grid(True)
-
+    ax.grid(
+        True,
+        color=RP["muted"],
+        alpha=0.25
+    )
     todos = [
         linea_funcion,
         linea_a,
@@ -503,9 +537,9 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
             a, b, _ = historial_visible[-1]
 
             ax.set_title(
-                f"Iteración {iteraciones_animadas}"
+                f"Iteración {iteraciones_animadas}",
+                color=RP["gold"]
             )
-
             raiz = resultado
 
             centro_x = actualizar_funcion(a, b)
@@ -779,7 +813,8 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
 
 
         ax.set_title(
-            f"Iteración {iteracion+1}"
+            f"Iteración {iteracion+1}",
+            color=RP["gold"]
         )
 
 
@@ -794,7 +829,9 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
         repeat=False
     )
 
-
+    ax.title.set_color(RP["text"])
+    ax.xaxis.label.set_color(RP["text"])
+    ax.yaxis.label.set_color(RP["text"])
     plt.show()
 
     return anim

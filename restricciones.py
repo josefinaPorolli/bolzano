@@ -1,3 +1,4 @@
+import sympy as sp
 from sympy import *
 from sympy.calculus.util import continuous_domain
 from sympy.parsing.sympy_parser import parse_expr, standard_transformations
@@ -12,13 +13,13 @@ NAMESPACE = {
     "csch": csch, "sech": sech, "coth": coth,
 }
 
-def preparar_funcion(fn):
+def preparar_funcion(fn:str) -> sp.Expr: 
     return parse_expr(fn, local_dict=NAMESPACE, transformations=standard_transformations, evaluate=True)
 
-def obtener_variable(expr):
+def obtener_variable(expr: sp.Expr) -> sp.Symbol | None:
     return next(iter(expr.free_symbols), None)
 
-def restricciones_log(expr, x):
+def restricciones_log(expr: sp.Expr, x: sp.Symbol) -> list[sp.Relational]:
     condiciones = []
     if len(expr.args) == 1:
         condiciones.append(expr.args[0] > 0)
@@ -30,7 +31,7 @@ def restricciones_log(expr, x):
             condiciones.append(Ne(base, 1))
     return condiciones
 
-def restricciones_trigonometricas(expr):
+def restricciones_trigonometricas(expr: sp.Expr) -> list[sp.Relational]:
     condiciones = []
     argumento = expr.args[0]
     if expr.func in (tan, sec):
@@ -39,7 +40,7 @@ def restricciones_trigonometricas(expr):
         condiciones.append(Ne(sin(argumento), 0))
     return condiciones
 
-def obtener_condiciones(expr, x):
+def obtener_condiciones(expr: sp.Expr, x: sp.Symbol) -> list[sp.Relational]:
     if expr.is_Function:
         condiciones = []
         if expr.func == log:
@@ -78,7 +79,7 @@ def obtener_condiciones(expr, x):
 # p. ej.: {2nπ} ∪ {2nπ+π}  ->  {nπ}
 # ============================================================
 
-def _es_imageset_lineal_enteros(s):
+def _es_imageset_lineal_enteros(s:sp.Set) -> bool:
     if not isinstance(s, ImageSet):
         return False
     if len(s.args) < 2 or s.args[1] != S.Integers:
@@ -90,13 +91,13 @@ def _es_imageset_lineal_enteros(s):
     coef = lam.expr.diff(n)
     return not coef.has(n)
 
-def _coef_offset(s):
+def _coef_offset(s:sp.ImageSet) -> tuple[sp.Expr, sp.Expr]:
     lam = s.lamda
     n = lam.variables[0]
     expr = lam.expr
     return simplify(expr.diff(n)), simplify(expr.subs(n, 0))
 
-def fusionar_periodicos(conjunto):
+def fusionar_periodicos(conjunto: sp.Set) -> sp.Set:
     if isinstance(conjunto, ImageSet):
         piezas = [conjunto]
     elif isinstance(conjunto, Union):
@@ -139,20 +140,20 @@ def fusionar_periodicos(conjunto):
 # FORMATEO ROBUSTO (Interval, Union, Complement, ImageSet, FiniteSet)
 # ============================================================
 
-def _fmt_intervalo(iv):
+def _fmt_intervalo(iv: sp.Interval) -> str:
     izq = "-∞" if iv.start == -oo else str(iv.start)
     der = "∞" if iv.end == oo else str(iv.end)
     a = "(" if iv.left_open else "["
     b = ")" if iv.right_open else "]"
     return f"{a}{izq},{der}{b}"
 
-def _fmt_imageset(s):
+def _fmt_imageset(s: sp.ImageSet) -> str:
     lam = s.lamda
     n = lam.variables[0]
     expr_str = str(lam.expr).replace(str(n), "n")
     return "{" + expr_str + " : n∈ℤ}"
 
-def _fmt_conjunto(s):
+def _fmt_conjunto(s: sp.Set) -> str:
     if s == S.Reals:
         return "ℝ"
     if s == S.EmptySet:
@@ -171,12 +172,12 @@ def _fmt_conjunto(s):
         return " ∪ ".join(_fmt_conjunto(a) for a in s.args)
     return str(s)
 
-def _fmt_excluido(s):
+def _fmt_excluido(s: sp.Set) -> str:
     if isinstance(s, Union):
         return "(" + " ∪ ".join(_fmt_conjunto(a) for a in s.args) + ")"
     return _fmt_conjunto(s)
 
-def formatear_dominio(dominio):
+def formatear_dominio(dominio: sp.Set) -> str:
     return "D: " + _fmt_conjunto(dominio)
 
 
@@ -184,7 +185,7 @@ def formatear_dominio(dominio):
 # CÁLCULO DE DOMINIO
 # ============================================================
 
-def CalcularDominio(fn):
+def CalcularDominio(fn:sp.Expr) -> sp.Set:
     variable = obtener_variable(fn)
     if variable is None:
         return S.Reals
@@ -219,5 +220,5 @@ def CalcularDominio(fn):
     return simplify(dominio)
 
 
-def intervalo_en_dominio(dominio, a, b):
+def intervalo_en_dominio(dominio: sp.Set, a: sp.Float, b: sp.Float) -> bool:
     return Interval(a, b).is_subset(dominio)

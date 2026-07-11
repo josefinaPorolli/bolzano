@@ -10,7 +10,9 @@ import BuscadorDeIntervalos as bu
 import funciones_bolzano as f
 import interfaz 
 import sympy as sp
-a,b=0,0
+
+a:sp.Float = 0
+b:sp.Float = 0
 
 def prints():
     """Imprime una tabla de funciones genéricas y sus representaciones matemáticas."""
@@ -54,11 +56,9 @@ def prints():
 
 while True:
 	prints()
-	# fn = "log(x+5) + sqrt(x+3) - 1/x + sin(x) - (x-2)"
-	# fn = "1"
 	while True:
 		try:
-			fn = input("Introduce la función a evaluar: ")
+			fn:str = input("Introduce la función a evaluar: ")
 			fn = r.preparar_funcion(fn)
 			break
 		except Exception:
@@ -156,8 +156,7 @@ print("DESARROLLO DEL ALGORITMO DE BOLZANO")
 print("="*40)
 
 # Para saber la cantidad de iteraciones, se solicita una tolerancia o la propia cantidad de iteraciones
-selec = ""
-tol = 0
+selec: str = ""
 n = 0
 while selec not in ["1", "2"]:
 	selec = input("""¿Desea ingresar una tolerancia o una cantidad de iteraciones?

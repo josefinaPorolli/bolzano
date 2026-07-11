@@ -3,8 +3,8 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Rectangle, Arc
 import numpy as np
 import sympy as sp
-s=0.3 #animation speed minimo 0.02
-MAX_ITER_MOSTRADAS = 23
+s=0.03 #animation speed minimo 0.02
+MAX_ITER_MOSTRADAS = 25
 # ------------------------------------------------------------------
 # FIX (solo visual): el eje X ahora es RELATIVO al centro del intervalo
 # en vez de absoluto. Motivo: cuando el intervalo se hace mucho más chico
@@ -17,18 +17,20 @@ MAX_ITER_MOSTRADAS = 23
 # ------------------------------------------------------------------
 
 def limite_x(a, b):
-    a = sp.sympify(a)
-    b = sp.sympify(b)
+    a = float(a)
+    b = float(b)
 
     if a > b:
         a, b = b, a
 
-    ancho = b - a
-    margen = ancho * sp.Float('0.1', 64)
+    ancho = b-a
+
+    if ancho == 0:
+        ancho = 1e-15
 
     return (
-        float(-(ancho/2) - margen),
-        float((ancho/2) + margen)
+        -ancho*0.6,
+        ancho*0.6
     )
 
 def generar_puntos(a: sp.Float, b: sp.Float, muestras: int = 400):
@@ -57,7 +59,7 @@ def limite_y(funcion: callable, a, b, muestras: int = 400) -> tuple:
     xs_local = generar_puntos(a,b,muestras)
 
     ys_local = [
-        funcion(x)
+        funcion(float(x))
         for x in xs_local
     ]
 
@@ -78,15 +80,15 @@ def limite_y(funcion: callable, a, b, muestras: int = 400) -> tuple:
         float(centro+amplitud)
     )
 
-def evaluar(fn, x):
+def crear_evaluador(fn):
 
     expr = sp.sympify(fn)
 
     if expr.free_symbols:
         var = next(iter(expr.free_symbols))
-        return expr.subs(var,x).evalf(64)
+        return sp.lambdify(var, expr, "numpy")
 
-    return expr.evalf(64)
+    return lambda x: float(expr)
 
 def smoothstep(t):
     return t*t*(3-2*t)
@@ -121,7 +123,7 @@ def mostrar_raiz_exacta(fn, historial, resultado):
 
     a,b,x = historial[0]
 
-    funcion_num = lambda x: evaluar(fn,x)
+    funcion_num = crear_evaluador(fn)
 
     fig, ax = plt.subplots(figsize=(10,6))
 
@@ -132,7 +134,7 @@ def mostrar_raiz_exacta(fn, historial, resultado):
     )
 
     ys = [
-        funcion_num(i)
+        funcion_num(float(i))
         for i in xs
     ]
 
@@ -183,12 +185,13 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
     if len(historial) == 1:
         mostrar_raiz_exacta(fn, historial, resultado)
         return
-    funcion_num = lambda x: evaluar(fn,x)
+    funcion_num = crear_evaluador(fn)
 
     iteraciones_animadas = min(
         MAX_ITER_MOSTRADAS,
         max(len(historial)-1, 0)
     )
+    historial_visible = historial[:iteraciones_animadas+1]
 
     raiz_exacta = (len(historial) == 1)
 
@@ -196,8 +199,8 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
     # MUESTREO ADAPTATIVO
     # ================================
 
-    x_min = min(min(i[0], i[1]) for i in historial)
-    x_max = max(max(i[0], i[1]) for i in historial)
+    x_min = min(min(i[0], i[1]) for i in historial_visible)
+    x_max = max(max(i[0], i[1]) for i in historial_visible)
 
     margen = (x_max-x_min)*0.2
 
@@ -251,22 +254,27 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
     # np.unique/np.array: los puntos se mantienen en alta precisión, y
     # unos pocos duplicados no afectan el dibujo.
     puntos = sorted(
-        (x, funcion_num(x))
+        (x, funcion_num(float(x)))
         for sub in lista_x
         for x in sub
     )
 
-    xs = [p[0] for p in puntos]
-    ys = [p[1] for p in puntos]
+    xs = np.array([float(p[0]) for p in puntos])
+    ys = np.array([float(p[1]) for p in puntos])
 
+    xs_float = np.array([float(x) for x in xs])
+    ys_float = np.array([float(y) for y in ys])
 
     # ================================
     # ESCALAS Y PRECALCULADAS
     # ================================
 
     escalas_y = []
+    ylim_inicial = limite_y(funcion_num, historial[0][0], historial[0][1])
+    ylim_final = limite_y(funcion_num, historial_visible[-1][0], historial_visible[-1][1])
 
-    for i in range(max(0, len(historial)-1)):
+
+    for i in range(iteraciones_animadas):
 
         a0,b0,_ = historial[i]
         a1,b1,_ = historial[i+1]
@@ -403,26 +411,30 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
         a.set_visible(False)
 
     def actualizar_funcion(a, b):
-        a = sp.sympify(a)
-        b = sp.sympify(b)
 
-        centro_x = (a + b) / 2  # mismo centro que usará limite_x(a,b)
+        a = float(a)
+        b = float(b)
+
+        centro_x = (a+b)/2
 
         izq = min(a,b)
         der = max(a,b)
 
-        seleccion = [
-            (x,y)
-            for x,y in zip(xs,ys)
-            if izq <= x <= der
-        ]
+        mascara = (
+            (xs_float >= izq) &
+            (xs_float <= der)
+        )
 
-        if seleccion:
-            xs_sel, ys_sel = zip(*seleccion)
-            xn = [float(x - centro_x) for x in xs_sel]  # x: relativo
-            yn = [float(y) for y in ys_sel]               # y: absoluto (sin cambios)
+        if np.count_nonzero(mascara) < 2:
+            x_temp = np.linspace(izq, der, 100)
+            y_temp = funcion_num(x_temp)
+
+            xn = x_temp - centro_x
+            yn = y_temp
+
         else:
-            xn, yn = [], []
+            xn = xs_float[mascara] - centro_x
+            yn = ys_float[mascara]
 
         linea_funcion.set_data(xn, yn)
         linea_funcion.set_visible(True)
@@ -443,7 +455,7 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
             linea_b.set_visible(True)
 
             ax.set_xlim(limite_x(a, b))
-            ax.set_ylim(limite_y(funcion_num, a, b))
+            ax.set_ylim(ylim_inicial)
 
             texto_raiz.set_position(
                 (
@@ -488,20 +500,36 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
 
         if frame >= total_animacion:
 
-            a, b, _ = historial[-1]
+            a, b, _ = historial_visible[-1]
+
+            ax.set_title(
+                f"Iteración {iteraciones_animadas}"
+            )
+
+            raiz = resultado
+
+            centro_x = actualizar_funcion(a, b)
+
+            ax.set_xlim(
+                limite_x(a, b)
+            )
+
+            ax.set_ylim(
+                ylim_final
+            )
 
             if len(historial) == 1:
                 ax.set_title("Raíz exacta encontrada")
             else:
                 ax.set_title(
-                    f"Iteración {len(historial)}"
+                    f"Iteración {iteraciones_animadas}"
                 )
 
             raiz = resultado
 
             centro_x = actualizar_funcion(a, b)
 
-            ylim = ax.get_ylim()
+            ylim = ylim_final
 
             ax.set_xlim(limite_x(a, b))
             ax.set_ylim(ylim)
@@ -545,7 +573,7 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
             circulo.set_center(
                 (
                     float(raiz - centro_x),
-                    float(funcion_num(raiz))
+                    float(funcion_num(float(raiz)))
                 )
             )
 
@@ -756,8 +784,6 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
 
 
         return todos
-
-
 
     anim = FuncAnimation(
         fig,

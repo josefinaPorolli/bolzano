@@ -149,11 +149,13 @@ def mostrar_raiz_exacta(fn, historial, resultado):
         for i in xs
     ]
 
+    centro = (a+b)/2
+
     ax.plot(
-    [float(i-x) for i in xs],
-    [float(y) for y in ys],
-    linewidth=2,
-    color=RP["foam"]
+        [float(i-centro) for i in xs],
+        [float(y) for y in ys],
+        linewidth=2,
+        color=RP["foam"]
     )
 
     ax.axhline(
@@ -186,7 +188,8 @@ def mostrar_raiz_exacta(fn, historial, resultado):
     )
 
     ax.set_title(
-        "Raíz encontrada exactamente"
+        f"Iteración {iteraciones_animadas}",
+        color=RP["gold"]
     )
 
     ax.grid(True)
@@ -508,7 +511,10 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
             )
             texto_raiz.set_visible(True)
 
-            ax.set_title("Raíz encontrada en la primera iteración")
+            ax.set_title(
+                "Raíz encontrada exactamente",
+                color=RP["gold"]
+            )
 
             return todos
 

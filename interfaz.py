@@ -225,9 +225,15 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
     # unos puntos fuera del intervalo para que al inicio
     # no se corte la función en los bordes
     # extremos
+    izq_extra = x_min - margen
+
+    # evitar salir del dominio positivo
+    if izq_extra <= 0:
+        izq_extra = x_min * 0.5
+
     lista_x.append(
         generar_puntos(
-            x_min-margen,
+            izq_extra,
             x_min,
             20
         )

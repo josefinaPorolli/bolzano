@@ -188,7 +188,7 @@ def mostrar_raiz_exacta(fn, historial, resultado):
     )
 
     ax.set_title(
-        f"Iteración {iteraciones_animadas}",
+        f"Raíz encontrada en {len(historial)-1} iteraciones",
         color=RP["gold"]
     )
 

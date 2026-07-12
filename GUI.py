@@ -210,6 +210,8 @@ class BolzanoApp:
         canvas.pack(side="left", fill="both", expand=True, padx=(16, 0))
         scrollbar.pack(side="right", fill="y")
 
+        self._activar_scroll_mouse(table, canvas)
+
         table.columnconfigure(0, weight=1)
         table.columnconfigure(1, weight=1)
         for i, (comando, funcion) in enumerate(FUNCIONES_EQUIV.items()):
@@ -250,7 +252,10 @@ class BolzanoApp:
         else:
             a_v, b_v = sp.Float(a, 64), sp.Float(b, 64)
 
-        xs = interfaz.generar_puntos(a_v, b_v, 500)
+        inicio = min(a_v, b_v)
+        fin = max(a_v, b_v)
+
+        xs = interfaz.generar_puntos(inicio, fin, 500)
         xs_f, ys_f = [], []
         for x in xs:
             try:
@@ -271,7 +276,12 @@ class BolzanoApp:
         if a is not None and b is not None:
             self.ax.axvline(float(a_v), color=RP["pine"], linewidth=1.5, linestyle="--")
             self.ax.axvline(float(b_v), color=RP["pine"], linewidth=1.5, linestyle="--")
-            self.ax.set_xlim(float(a_v) - float(b_v - a_v) * 0.15, float(b_v) + float(b_v - a_v) * 0.15)
+            margen = abs(float(b_v - a_v)) * 0.15
+
+            self.ax.set_xlim(
+                float(min(a_v, b_v)) - margen,
+                float(max(a_v, b_v)) + margen
+            )
         self.canvas.draw()
 
     # ------------------------------------------------------------------
@@ -291,6 +301,8 @@ class BolzanoApp:
         canvas.pack(side="left", fill="both", expand=True, padx=16, pady=12)
         scrollbar.pack(side="right", fill="y")
 
+        self._activar_scroll_mouse(self.steps, canvas)
+
         self._build_paso1()
         self._build_paso2()
         self._build_paso3()
@@ -301,6 +313,16 @@ class BolzanoApp:
         lbl = tk.Label(parent, text="", bg=RP["surface"], fg=RP["love"], font=FONT,
                         wraplength=700, justify="left")
         return lbl
+
+    def _activar_scroll_mouse(self, widget, canvas):
+        def scroll(e):
+            canvas.yview_scroll(
+                int(-1 * (e.delta / 120)),
+                "units"
+            )
+
+        widget.bind("<Enter>", lambda e: widget.bind_all("<MouseWheel>", scroll))
+        widget.bind("<Leave>", lambda e: widget.unbind_all("<MouseWheel>"))
 
     # ---- PASO 1: función y dominio ----
     def _build_paso1(self):
@@ -639,6 +661,10 @@ class BolzanoApp:
         plt.show = lambda *a, **k: show_original(block=False)
         try:
             anim = interfaz.mostrar_bolzano(self.fn, self.historial, self.resultado)
+
+            if anim is not None:
+                anim.event_source.stop()
+                anim._step()
         finally:
             plt.show = show_original
 
@@ -656,32 +682,54 @@ class BolzanoApp:
         if getattr(manager, "toolbar", None) is not None:
             manager.toolbar.pack_forget()
 
-        playing = {"on": True}
+        playing = {"on": False}
 
         barra = tk.Frame(window, bg=RP["base"])
         barra.pack(side="bottom", fill="x")
 
         def cerrar():
-            if anim is not None:
+            if anim is not None and anim.event_source is not None:
                 anim.event_source.stop()
-            plt.close(fig)
-            manager.destroy()
+            plt.close(fig)  # ya destruye la ventana (async, vía manager.destroy() interno)
             boton.set_text("Ver animación")
             boton.set_enabled(True)
 
         def reiniciar():
-            if anim is not None:
+            if anim is not None and anim.event_source is not None:
                 anim.event_source.stop()
-            plt.close(fig)
-            manager.destroy()
-            self._lanzar_animacion(boton)
+
+            ax = fig.axes[0]
+
+            # borrar textos
+            for txt in ax.texts[:]:
+                txt.remove()
+
+            # borrar elementos de la animación excepto la curva
+            for line in ax.lines[1:]:
+                line.remove()
+
+            # reiniciar contador de frames
+            anim.frame_seq = anim.new_frame_seq()
+
+            btn_play.set_text("▶ Reproducir")
+            playing["on"] = False
+
+            fig.canvas.draw_idle()
 
         if anim is not None:
-            btn_play = RoundedButton(barra, "⏸ Pausar", bg=RP["pine"], hover=RP["foam"],
+            btn_play = RoundedButton(barra, "▶ Reproducir", bg=RP["pine"], hover=RP["foam"],
                                       fg=RP["base"], width=130)
             btn_play.pack(side="left", padx=(14, 6), pady=10)
 
             def toggle_play():
+                if playing["on"]:
+                    anim.event_source.stop()
+                    btn_play.set_text("▶ Reproducir")
+                else:
+                    anim.event_source.start()
+                    btn_play.set_text("⏸ Pausar")
+
+                playing["on"] = not playing["on"]
                 if playing["on"]:
                     anim.event_source.stop()
                     btn_play.set_text("▶ Reanudar")
@@ -697,7 +745,10 @@ class BolzanoApp:
             velocidad = tk.DoubleVar(value=interfaz.s)
 
             def cambiar_velocidad(valor):
-                interfaz.s = max(0.01, min(1.0, float(valor)))
+                intervalo = max(10, float(valor) * 1000)
+
+                if anim is not None and anim.event_source is not None:
+                    anim.event_source.interval = intervalo
 
             slider = tk.Scale(barra, from_=0.01, to=1.0, resolution=0.01, orient="horizontal",
                                variable=velocidad, command=cambiar_velocidad, bg=RP["base"],
@@ -705,7 +756,7 @@ class BolzanoApp:
                                length=240)
             slider.pack(side="left", pady=10)
 
-            tk.Label(barra, text="(aplica al reiniciar)", bg=RP["base"], fg=RP["muted"],
+            tk.Label(barra, text="(tiempo entre pasos)", bg=RP["base"], fg=RP["muted"],
                       font=("Segoe UI", 8)).pack(side="left", padx=(6, 0))
         else:
             tk.Label(barra, text="Raíz exacta: no hay animación para reproducir.",

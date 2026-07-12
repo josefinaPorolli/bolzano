@@ -2,6 +2,7 @@ import sympy as sp
 from sympy import *
 from sympy.calculus.util import continuous_domain
 from sympy.parsing.sympy_parser import parse_expr, standard_transformations
+import math
 
 NAMESPACE = {
     "e": E, "E": E, "pi": pi,
@@ -135,7 +136,49 @@ def fusionar_periodicos(conjunto: sp.Set) -> sp.Set:
     n = Symbol('n', integer=True)
     return ImageSet(Lambda(n, base + n * nuevo_periodo), S.Integers)
 
+def hay_excluido_en_rango(excluido, a, b):
+    """¿Hay algún punto del conjunto excluido dentro del intervalo cerrado [a,b]?"""
 
+    if excluido is None or excluido == S.EmptySet:
+        return False
+
+    a = float(a)
+    b = float(b)
+
+    if a > b:
+        a, b = b, a
+
+    if isinstance(excluido, Union):
+        return any(hay_excluido_en_rango(p, a, b) for p in excluido.args)
+
+    if isinstance(excluido, FiniteSet):
+        return any(a <= float(p) <= b for p in excluido)
+
+    if _es_imageset_lineal_enteros(excluido):
+        lam = excluido.lamda
+        n = lam.variables[0]
+        expr = lam.expr
+
+        coef = float(expr.diff(n))
+        offset = float(expr.subs(n, 0))
+
+        if coef == 0:
+            return a <= offset <= b
+
+        n_lo = (a - offset) / coef
+        n_hi = (b - offset) / coef
+
+        if coef < 0:
+            n_lo, n_hi = n_hi, n_lo
+
+        for n_val in range(math.floor(n_lo), math.ceil(n_hi) + 1):
+            punto = offset + coef * n_val
+            if a <= punto <= b:
+                return True
+
+        return False
+
+    return False
 # ============================================================
 # FORMATEO ROBUSTO (Interval, Union, Complement, ImageSet, FiniteSet)
 # ============================================================
@@ -191,14 +234,17 @@ def CalcularDominio(fn:sp.Expr) -> sp.Set:
         return S.Reals
 
     try:
-        return simplify(continuous_domain(fn, variable, S.Reals))
+        dominio = simplify(continuous_domain(fn, variable, S.Reals))
+
+        if isinstance(dominio, Complement):
+            base, excluido = dominio.args
+            dominio = Complement(base, fusionar_periodicos(excluido))
+
+        return dominio
+
     except Exception:
         pass
 
-    # fallback: condiciones manuales. Las Ne (p. ej. de tan/cot/sec/csc,
-    # o de denominadores) se resuelven con solveset (da el ImageSet
-    # periódico exacto) en vez de solve_univariate_inequality, que no
-    # está pensado para "≠" y puede devolver solo un período acotado.
     condiciones = obtener_condiciones(fn, variable)
     dominio = S.Reals
 
@@ -210,6 +256,7 @@ def CalcularDominio(fn:sp.Expr) -> sp.Set:
         if isinstance(c, Ne):
             expr_igual_cero = c.lhs - c.rhs
             excluidos = solveset(Eq(expr_igual_cero, 0), variable, domain=S.Reals)
+            excluidos = fusionar_periodicos(excluidos)
             dominio = Complement(dominio, excluidos)
         else:
             dominio = Intersection(
@@ -217,8 +264,57 @@ def CalcularDominio(fn:sp.Expr) -> sp.Set:
                 solve_univariate_inequality(c, variable, relational=False)
             )
 
-    return simplify(dominio)
+    dominio = simplify(dominio)
 
+    if isinstance(dominio, Complement):
+        base, excluido = dominio.args
+        dominio = Complement(base, fusionar_periodicos(excluido))
+
+    return dominio
 
 def intervalo_en_dominio(dominio: sp.Set, a: sp.Float, b: sp.Float) -> bool:
-    return Interval(a, b).is_subset(dominio)
+
+    if a > b:
+        a, b = b, a
+
+    # Dominio = ℝ
+    if dominio == S.Reals:
+        return True
+
+    # Dominio = Intervalo
+    if isinstance(dominio, Interval):
+
+        if dominio.left_open:
+            if not (a > dominio.start):
+                return False
+        else:
+            if not (a >= dominio.start):
+                return False
+
+        if dominio.right_open:
+            if not (b < dominio.end):
+                return False
+        else:
+            if not (b <= dominio.end):
+                return False
+
+        return True
+
+    # Dominio = Unión de intervalos
+    if isinstance(dominio, Union):
+        return any(intervalo_en_dominio(parte, a, b)
+                   for parte in dominio.args)
+
+    # Dominio = Base - Exclusiones
+    if isinstance(dominio, Complement):
+        base, excluido = dominio.args
+
+        if not intervalo_en_dominio(base, a, b):
+            return False
+
+        return not hay_excluido_en_rango(excluido, a, b)
+
+    # Último intento usando SymPy
+    r = Interval(a, b).is_subset(dominio)
+
+    return bool(r) if r is not None else False

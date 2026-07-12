@@ -1,6 +1,6 @@
 import sympy as sp
-from sympy import sympify, S, oo, Interval, Union, Complement, ImageSet, FiniteSet
-import math
+from sympy import S, oo, Interval, Union, Complement
+from restricciones import hay_excluido_en_rango
 
 UMBRAL_POLO = sp.Float(1e6, 64)  # |f(x)| por encima de esto se trata como "probable asíntota", no dato confiable
 INF = sp.Float(1e-6, 64)         # infinitésimo para correrse de un borde/punto excluido antes de evaluar
@@ -15,14 +15,6 @@ def evaluar(fn: sp.Expr, val: sp.Float):
             64
         )
 
-        # cerca de una asíntota sympy no siempre lanza excepción: puede
-        # devolver zoo (ComplexInfinity) directamente, o un valor finito
-        # pero enorme un paso antes/después del polo. Esto es una red de
-        # seguridad extra; la protección real contra falsos "cambios de
-        # signo" que en verdad son un salto de asíntota está en
-        # `hay_excluido_en_rango` (ver más abajo), que sabe EXACTAMENTE
-        # dónde están las asíntotas periódicas y no depende de qué tan
-        # grande dio el valor muestreado.
         if not f.is_real or not f.is_finite:
             return None
         if abs(f) > UMBRAL_POLO:
@@ -32,84 +24,12 @@ def evaluar(fn: sp.Expr, val: sp.Float):
     except Exception:
         return None
 
-
-# ============================================================
-# DETECCIÓN DE ASÍNTOTAS ENTRE DOS PUNTOS
-# ============================================================
-#
-# Un cambio de signo f(x0)*f(x1)<0 NO implica que haya una raíz si entre
-# x0 y x1 la función tiene un polo (Bolzano exige continuidad en [x0,x1]).
-# Esto pasa justo con tan(x), cot(x), etc. Como el dominio ahora modela
-# correctamente las exclusiones periódicas (ver restricciones.py), se
-# puede chequear ARITMÉTICAMENTE si algún punto excluido cae estrictamente
-# dentro de (x0,x1), sin depender de que el valor muestreado haya sido
-# "suficientemente grande" (que con un grid grueso puede no serlo).
-
-def _es_imageset_lineal_enteros(s):
-    if not isinstance(s, ImageSet):
-        return False
-    if len(s.args) < 2 or s.args[1] != S.Integers:
-        return False
-    lam = s.lamda
-    if len(lam.variables) != 1:
-        return False
-    n = lam.variables[0]
-    coef = lam.expr.diff(n)
-    return not coef.has(n)
-
-def hay_excluido_en_rango(excluido, a, b):
-    """¿Hay algún punto de `excluido` estrictamente entre a y b?"""
-    if excluido is None or excluido == S.EmptySet:
-        return False
-
-    a = float(a)
-    b = float(b)
-    if a > b:
-        a, b = b, a
-
-    if isinstance(excluido, Union):
-        return any(hay_excluido_en_rango(p, a, b) for p in excluido.args)
-
-    if isinstance(excluido, FiniteSet):
-        return any(a < float(p) < b for p in excluido)
-
-    if _es_imageset_lineal_enteros(excluido):
-        lam = excluido.lamda
-        n = lam.variables[0]
-        expr = lam.expr
-        coef = float(expr.diff(n))
-        offset = float(expr.subs(n, 0))
-
-        if coef == 0:
-            return a < offset < b
-
-        n_lo = (a - offset) / coef
-        n_hi = (b - offset) / coef
-        if coef < 0:
-            n_lo, n_hi = n_hi, n_lo
-
-        for n_val in range(math.floor(n_lo), math.ceil(n_hi) + 1):
-            punto = offset + coef * n_val
-            if a < punto < b:
-                return True
-        return False
-
-    # tipo de exclusión no reconocido: no se puede verificar con certeza.
-    # Preferimos no bloquear la búsqueda antes que romper con una excepción.
-    return False
-
 def _excluido_de(dominio):
     """Extrae el conjunto excluido (el "- {...}") de un dominio Complement.
     Si el dominio no tiene exclusiones, devuelve None."""
     if isinstance(dominio, Complement):
         return dominio.args[1]
     return None
-
-from sympy.parsing.sympy_parser import (
-    parse_expr,
-    standard_transformations,
-    implicit_multiplication_application,
-)
 
 def es_raiz_exacta(fn, val):
     f = evaluar(fn, val)
@@ -224,23 +144,6 @@ def buscar_simetrico(fn, excluido=None):
             return [(a, inicio)]
 
     return [None]
-
-
-# ============================================================
-# EXTRACCIÓN DE INTERVALOS BASE A PARTIR DEL DOMINIO (objeto sympy)
-# ============================================================
-#
-# Antes se armaba el dominio como STRING (via formatear_dominio) y se volvía
-# a parsear acá con .split(","). Eso es frágil: cualquier cambio en cómo se
-# imprime el dominio (p. ej. al agregar soporte para dominios periódicos,
-# "D: ℝ - {pi*n + pi/2 : n∈ℤ}") rompe el parser. Ahora se recibe directamente
-# el objeto Set de sympy que ya devuelve CalcularDominio, sin pasar por texto.
-#
-# Las exclusiones puntuales/periódicas (el "- {...}" de un Complement) no se
-# usan para particionar el intervalo de búsqueda: son un conjunto de medida
-# cero, así que un barrido numérico prácticamente nunca cae justo en uno.
-# La protección real contra falsos positivos en esos puntos (asíntotas) está
-# en evaluar(), que descarta valores no finitos o desmesuradamente grandes.
 
 def _intervalos_base(dominio):
     if isinstance(dominio, Complement):

@@ -8,7 +8,6 @@
 import restricciones as r
 import BuscadorDeIntervalos as bu
 import funciones_bolzano as f
-import interfaz 
 import sympy as sp
 
 a:sp.Float = 0
@@ -53,6 +52,25 @@ def prints():
     for comando, funcion in funciones.items():
         print(f"{comando:<10} | {funcion}")
     print()
+
+def formato_numero(x):
+    x = sp.N(x, 64)
+
+    texto = str(x)
+
+    # separar parte decimal
+    if "." in texto:
+        entero, decimal = texto.split(".")
+
+        # eliminar ceros finales
+        decimal = decimal.rstrip("0")
+
+        if decimal:
+            texto = entero + "." + decimal
+        else:
+            texto = entero
+
+    return texto
 
 while True:
 	prints()
@@ -188,14 +206,13 @@ resultado, historial = f.iterar(fn, a, b, n)
 
 for i, (a_i, b_i, x_i) in enumerate(historial, start=1):
     print(f"Iteración {i}")
-    print(f"Intervalo: [{interfaz.formato_numero(a_i)}, {interfaz.formato_numero(b_i)}]")
-    print(f"x = {interfaz.formato_numero(x_i)}")
-    print(f"f(x) = {interfaz.formato_numero(f.evaluar(fn, x_i))}")
+    print(f"Intervalo: [{formato_numero(a_i)}, {formato_numero(b_i)}]")
+    print(f"x = {formato_numero(x_i)}")
+    print(f"f(x) = {formato_numero(f.evaluar(fn, x_i))}")
     print()
 
 if f.evaluar(fn, resultado) == 0:
-    print(f"Resultado final: raíz exacta x = {interfaz.formato_numero(resultado)}")
+    print(f"Resultado final: raíz exacta x = {formato_numero(resultado)}")
 else:
-    print(f"Resultado final (raíz aproximada): x = {interfaz.formato_numero(resultado)}")
+    print(f"Resultado final (raíz aproximada): x = {formato_numero(resultado)}")
 
-interfaz.mostrar_bolzano(fn, historial, resultado)

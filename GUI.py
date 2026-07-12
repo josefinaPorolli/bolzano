@@ -126,6 +126,7 @@ class BolzanoApp:
         self.root.configure(bg=RP["base"])
         self.root.attributes("-fullscreen", True)
         self.root.bind("<Escape>", lambda e: self.root.destroy())
+        self._configurar_widgets_ttk()
 
         # estado del problema
         self.fn = None
@@ -135,9 +136,37 @@ class BolzanoApp:
         self.n_iter = 0
         self.resultado = None
         self.historial = []
+        self._scroll_canvases = []
+        # El binding global recibe la rueda incluso cuando el cursor está
+        # sobre un Entry, Button u otro hijo dentro de un contenedor scrolleable.
+        self.root.bind_all("<MouseWheel>", self._scroll_con_rueda, add="+")
 
         self._build_layout()
         self.root.after(100, self.entry_fn.focus_set)
+
+    def _configurar_widgets_ttk(self):
+        """Aplica la paleta a los controles nativos que tienen flechas."""
+        style = ttk.Style(self.root)
+        style.theme_use("clam")
+        style.configure(
+            "Dark.Vertical.TScrollbar",
+            background=RP["overlay"], troughcolor=RP["base"],
+            bordercolor=RP["surface"], arrowcolor=RP["text"], width=14
+        )
+        style.map(
+            "Dark.Vertical.TScrollbar",
+            background=[("active", RP["highlight-high"]), ("pressed", RP["iris"])]
+        )
+        style.configure(
+            "Dark.TSpinbox",
+            fieldbackground=RP["overlay"], background=RP["overlay"],
+            foreground=RP["text"], arrowcolor=RP["foam"],
+            bordercolor=RP["surface"], lightcolor=RP["overlay"], darkcolor=RP["overlay"]
+        )
+        style.map(
+            "Dark.TSpinbox",
+            background=[("active", RP["highlight-high"]), ("disabled", RP["highlight-low"])]
+        )
 
     # ------------------------------------------------------------------
     # LAYOUT GENERAL
@@ -201,7 +230,8 @@ class BolzanoApp:
         tk.Frame(parent, bg=RP["overlay"], height=1).pack(fill="x", padx=16, pady=(0, 6))
 
         canvas = tk.Canvas(parent, bg=RP["surface"], highlightthickness=0)
-        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview,
+                                  style="Dark.Vertical.TScrollbar")
         table = tk.Frame(canvas, bg=RP["surface"])
         table.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas_window = canvas.create_window((0, 0), window=table, anchor="nw")
@@ -293,7 +323,8 @@ class BolzanoApp:
 
         # ---- scroll vertical para todos los pasos ----
         canvas = tk.Canvas(parent, bg=nb_bg, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview,
+                                  style="Dark.Vertical.TScrollbar")
         self.steps = tk.Frame(canvas, bg=nb_bg)
         self.steps.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.create_window((0, 0), window=self.steps, anchor="nw")
@@ -314,15 +345,19 @@ class BolzanoApp:
                         wraplength=700, justify="left")
         return lbl
 
-    def _activar_scroll_mouse(self, widget, canvas):
-        def scroll(e):
-            canvas.yview_scroll(
-                int(-1 * (e.delta / 120)),
-                "units"
-            )
+    def _activar_scroll_mouse(self, _widget, canvas):
+        """Registra un canvas para scroll aunque el cursor esté sobre sus hijos."""
+        self._scroll_canvases.append(canvas)
 
-        widget.bind("<Enter>", lambda e: widget.bind_all("<MouseWheel>", scroll))
-        widget.bind("<Leave>", lambda e: widget.unbind_all("<MouseWheel>"))
+    def _scroll_con_rueda(self, event):
+        widget = event.widget
+        while widget is not None:
+            if widget in self._scroll_canvases:
+                pasos = int(-event.delta / 120)
+                if pasos:
+                    widget.yview_scroll(pasos, "units")
+                return "break"
+            widget = getattr(widget, "master", None)
 
     # ---- PASO 1: función y dominio ----
     def _build_paso1(self):
@@ -579,8 +614,7 @@ class BolzanoApp:
         row = tk.Frame(fp, bg=RP["surface"])
         row.pack(anchor="w", pady=6)
         tk.Label(row, text="Ver iteración:", bg=RP["surface"], fg=RP["text"], font=FONT).pack(side="left")
-        self.spin_iter = tk.Spinbox(row, from_=1, to=1, width=6, bg=RP["overlay"], fg=RP["text"],
-                                     insertbackground=RP["text"], relief="flat", font=FONT)
+        self.spin_iter = ttk.Spinbox(row, from_=1, to=1, width=6, style="Dark.TSpinbox", font=FONT)
         self.spin_iter.pack(side="left", padx=6)
         RoundedButton(row, "Confirmar", command=self._on_ver_iteracion, bg=RP["pine"],
                       hover=RP["foam"], fg=RP["base"], width=110).pack(side="left", padx=6)
@@ -662,9 +696,11 @@ class BolzanoApp:
         try:
             anim = interfaz.mostrar_bolzano(self.fn, self.historial, self.resultado)
 
-            if anim is not None:
+            if anim is not None and anim.event_source is not None:
+                # La animación de matplotlib se creó para la versión CLI. En
+                # esta ventana el avance se controla abajo con after(), por lo
+                # que debe quedar detenida desde el primer instante.
                 anim.event_source.stop()
-                anim._step()
         finally:
             plt.show = show_original
 
@@ -672,6 +708,17 @@ class BolzanoApp:
         fig = plt.figure(nuevas.pop()) if nuevas else plt.gcf()
         manager = fig.canvas.manager
         window = manager.window
+
+        if anim is not None:
+            # FuncAnimation queda suscripta al primer evento de dibujo y en
+            # ese callback vuelve a iniciar su temporizador. Desconectarlo es
+            # imprescindible para que no avance sola al abrir la ventana.
+            first_draw_id = getattr(anim, "_first_draw_id", None)
+            if first_draw_id is not None:
+                fig.canvas.mpl_disconnect(first_draw_id)
+                anim._first_draw_id = None
+            if anim.event_source is not None:
+                anim.event_source.stop()
 
         # fullscreen sin marco, gestionado por el WM (mismo criterio que la
         # ventana principal: overrideredirect no recibe foco en X11).
@@ -682,12 +729,15 @@ class BolzanoApp:
         if getattr(manager, "toolbar", None) is not None:
             manager.toolbar.pack_forget()
 
-        playing = {"on": False}
+        reproduccion = {"activa": False, "frame": 0, "after_id": None}
 
         barra = tk.Frame(window, bg=RP["base"])
         barra.pack(side="bottom", fill="x")
 
         def cerrar():
+            if reproduccion["after_id"] is not None:
+                window.after_cancel(reproduccion["after_id"])
+                reproduccion["after_id"] = None
             if anim is not None and anim.event_source is not None:
                 anim.event_source.stop()
             plt.close(fig)  # ya destruye la ventana (async, vía manager.destroy() interno)
@@ -697,58 +747,93 @@ class BolzanoApp:
         def reiniciar():
             if anim is not None and anim.event_source is not None:
                 anim.event_source.stop()
+            if anim is not None:
+                detener_reproduccion()
+                habilitar_slider()
+            reproduccion["frame"] = 0
 
-            ax = fig.axes[0]
-
-            # borrar textos
-            for txt in ax.texts[:]:
-                txt.remove()
-
-            # borrar elementos de la animación excepto la curva
-            for line in ax.lines[1:]:
-                line.remove()
-
-            # reiniciar contador de frames
-            anim.frame_seq = anim.new_frame_seq()
-
-            btn_play.set_text("▶ Reproducir")
-            playing["on"] = False
-
-            fig.canvas.draw_idle()
+            if anim is not None:
+                # No se eliminan artistas: actualizar() conserva referencias
+                # a ellos. Sólo se los oculta antes de volver al primer frame.
+                ax = fig.axes[0]
+                for artista in list(ax.lines[1:]) + list(ax.patches) + list(ax.texts):
+                    artista.set_visible(False)
+                anim._draw_next_frame(0, blit=False)
+                fig.canvas.draw_idle()
 
         if anim is not None:
             btn_play = RoundedButton(barra, "▶ Reproducir", bg=RP["pine"], hover=RP["foam"],
                                       fg=RP["base"], width=130)
             btn_play.pack(side="left", padx=(14, 6), pady=10)
 
-            def toggle_play():
-                if playing["on"]:
-                    anim.event_source.stop()
-                    btn_play.set_text("▶ Reproducir")
-                else:
-                    anim.event_source.start()
-                    btn_play.set_text("⏸ Pausar")
-
-                playing["on"] = not playing["on"]
-                if playing["on"]:
-                    anim.event_source.stop()
-                    btn_play.set_text("▶ Reanudar")
-                else:
-                    anim.event_source.start()
-                    btn_play.set_text("⏸ Pausar")
-                playing["on"] = not playing["on"]
-
-            btn_play.command = toggle_play
-
             tk.Label(barra, text="Velocidad", bg=RP["base"], fg=RP["text"], font=FONT).pack(
                 side="left", padx=(20, 6))
             velocidad = tk.DoubleVar(value=interfaz.s)
+            iteraciones_animadas = min(
+                interfaz.MAX_ITER_MOSTRADAS, max(len(self.historial) - 1, 0)
+            )
+
+            def frames_totales_actuales():
+                frames_por_fase = max(1, int(interfaz.s * 120))
+                return (
+                    iteraciones_animadas * frames_por_fase * 4
+                    + frames_por_fase
+                    + 60
+                    + 1
+                )
 
             def cambiar_velocidad(valor):
-                intervalo = max(10, float(valor) * 1000)
+                interfaz.s = float(valor)
 
-                if anim is not None and anim.event_source is not None:
-                    anim.event_source.interval = intervalo
+            def habilitar_slider():
+                slider.configure(
+                    state="normal", bg=RP["base"], fg=RP["text"],
+                    troughcolor=RP["overlay"]
+                )
+
+            def bloquear_slider():
+                slider.configure(
+                    state="disabled", bg=RP["highlight-low"], fg=RP["muted"],
+                    troughcolor=RP["highlight-low"]
+                )
+
+            def detener_reproduccion():
+                reproduccion["activa"] = False
+                if reproduccion["after_id"] is not None:
+                    window.after_cancel(reproduccion["after_id"])
+                    reproduccion["after_id"] = None
+                btn_play.set_text("▶ Reproducir")
+
+            def avanzar():
+                reproduccion["after_id"] = None
+                if not reproduccion["activa"]:
+                    return
+
+                if reproduccion["frame"] >= frames_totales_actuales():
+                    detener_reproduccion()
+                    return
+
+                anim._draw_next_frame(reproduccion["frame"], blit=False)
+                reproduccion["frame"] += 1
+                reproduccion["after_id"] = window.after(
+                    round(1000 / 120), avanzar
+                )
+
+            def toggle_play():
+                if reproduccion["activa"]:
+                    detener_reproduccion()
+                    return
+
+                # Si ya llegó al final, Play vuelve a iniciar desde el primer
+                # cuadro, aun si antes no se había pulsado Pausa.
+                if reproduccion["frame"] >= frames_totales_actuales():
+                    reiniciar()
+                bloquear_slider()
+                reproduccion["activa"] = True
+                btn_play.set_text("⏸ Pausar")
+                reproduccion["after_id"] = window.after(0, avanzar)
+
+            btn_play.command = toggle_play
 
             slider = tk.Scale(barra, from_=0.01, to=1.0, resolution=0.01, orient="horizontal",
                                variable=velocidad, command=cambiar_velocidad, bg=RP["base"],
@@ -756,8 +841,12 @@ class BolzanoApp:
                                length=240)
             slider.pack(side="left", pady=10)
 
-            tk.Label(barra, text="(tiempo entre pasos)", bg=RP["base"], fg=RP["muted"],
+            tk.Label(barra, text="(duración de cada fase)", bg=RP["base"], fg=RP["muted"],
                       font=("Segoe UI", 8)).pack(side="left", padx=(6, 0))
+
+            # Mostrar el estado inicial sin consumir el primer frame: la
+            # reproducción comienza sólo al pulsar Play.
+            reiniciar()
         else:
             tk.Label(barra, text="Raíz exacta: no hay animación para reproducir.",
                       bg=RP["base"], fg=RP["subtle"], font=FONT).pack(side="left", padx=14, pady=10)

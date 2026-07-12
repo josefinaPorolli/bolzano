@@ -95,7 +95,7 @@ def crear_evaluador(fn):
 
     if expr.free_symbols:
         var = next(iter(expr.free_symbols))
-        return sp.lambdify(var, expr, "numpy")
+        return sp.lambdify(var, expr, "sympy")
 
     return lambda x: float(expr)
 
@@ -316,24 +316,19 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
     # TIEMPOS
     # ================================
 
-    fps = 50
-    espera_inicial = fps      # 1 segundo
+    fps = 120
+    espera_inicial = 0
 
-    espera_frames = int(s*fps)
-    zoom_frames = int(s*fps)
-
-    frames_iteracion = (
-        espera_frames*3 +
-        zoom_frames
-    )
-
-    espera_final = int(s*fps)
     circulo_frames = int(0.5*fps)
 
+    # El slider de GUI.py modifica s durante la reproducción. Se reserva la
+    # cantidad máxima de frames para que pueda aumentarse hasta 1 s sin tener
+    # que recrear la animación.
+    frames_iteracion_max = fps * 4
     frames_totales = (
         espera_inicial
-        + iteraciones_animadas*frames_iteracion
-        + espera_final
+        + iteraciones_animadas*frames_iteracion_max
+        + fps
         + circulo_frames
         + 1
     )
@@ -486,6 +481,12 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
 
     def actualizar(frame):
 
+        # s se consulta en cada cuadro; los FPS permanecen fijos en 120.
+        espera_frames = max(1, int(s * fps))
+        zoom_frames = max(1, int(s * fps))
+        frames_iteracion = espera_frames * 3 + zoom_frames
+        espera_final = max(1, int(s * fps))
+
         if len(historial) == 1:
             a, b, _ = historial[0]
 
@@ -496,6 +497,7 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
 
             linea_a.set_visible(True)
             linea_b.set_visible(True)
+            eje_cero.set_visible(True)
 
             ax.set_xlim(limite_x(a, b))
             ax.set_ylim(ylim_inicial)

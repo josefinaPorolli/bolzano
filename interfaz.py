@@ -418,14 +418,15 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
     ax.add_patch(circulo)
 
     texto_raiz = ax.text(
-        0,
-        0,
+        0.5,
+        0.08,
         "",
         color=RP["rose"],
         fontsize=12,
         ha="center",
-        va="bottom"
-    )
+        va="bottom",
+        transform=ax.transAxes
+    )   
 
     ax.grid(
         True,
@@ -633,13 +634,6 @@ def mostrar_bolzano(fn: sp.Expr, historial: list, resultado: sp.Float):
             if p >= 1:
 
                 ymin, ymax = ax.get_ylim()
-
-                texto_raiz.set_position(
-                    (
-                        float(raiz - centro_x),
-                        ymin + (ymax-ymin)*0.08
-                    )
-                )
 
                 texto_raiz.set_text(
                     f"Raíz ≈ {formato_numero(raiz)}"

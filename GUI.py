@@ -20,6 +20,7 @@ import restricciones as r
 import BuscadorDeIntervalos as bu
 import funciones_bolzano as f
 import interfaz
+import numpy as np
 
 RP = interfaz.RP  # paleta Rosé Pine, misma que interfaz.py
 
@@ -278,24 +279,40 @@ class BolzanoApp:
         evaluador = interfaz.crear_evaluador(self.fn)
 
         if a is None or b is None:
-            a_v, b_v = sp.Float(-10, 64), sp.Float(10, 64)
+            # usar el dominio calculado previamente
+            extremos = self.dominio
+
+            try:
+                intervalo = list(extremos.args) if hasattr(extremos, "args") else [extremos]
+
+                a_v = min(float(i.start) for i in intervalo if hasattr(i, "start"))
+                b_v = max(float(i.end) for i in intervalo if hasattr(i, "end"))
+
+                a_v, b_v = sp.Float(a_v, 64), sp.Float(b_v, 64)
+
+            except Exception:
+                a_v, b_v = sp.Float(-10, 64), sp.Float(10, 64)
+
         else:
-            a_v, b_v = sp.Float(a, 64), sp.Float(b, 64)
+            a_v, b_v = sp.Float(a, 64), sp.Float(b, 64) 
 
-        inicio = min(a_v, b_v)
-        fin = max(a_v, b_v)
-
-        xs = interfaz.generar_puntos(inicio, fin, 500)
+        xs = interfaz.generar_puntos(a_v, b_v, 500)
         xs_f, ys_f = [], []
         for x in xs:
             try:
                 y = evaluador(float(x))
-                if y == y and abs(y) < 1e6:  # descarta nan / valores enormes (asíntotas)
+
+                if y is None:
+                    raise ValueError
+
+                y = float(y)
+
+                if np.isfinite(y) and abs(y) < 1e6:
                     xs_f.append(float(x))
-                    ys_f.append(float(y))
+                    ys_f.append(y)
                 else:
-                    xs_f.append(float("nan"))
-                    ys_f.append(float("nan"))
+                    xs_f.append(np.nan)
+                    ys_f.append(np.nan)
             except Exception:
                 xs_f.append(float("nan"))
                 ys_f.append(float("nan"))
@@ -835,7 +852,7 @@ class BolzanoApp:
 
             btn_play.command = toggle_play
 
-            slider = tk.Scale(barra, from_=0.01, to=1.0, resolution=0.01, orient="horizontal",
+            slider = tk.Scale(barra, from_=0, to=1.0, resolution=0.01, orient="horizontal",
                                variable=velocidad, command=cambiar_velocidad, bg=RP["base"],
                                fg=RP["text"], troughcolor=RP["overlay"], highlightthickness=0,
                                length=240)

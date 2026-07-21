@@ -1,0 +1,4 @@
+matplotlib==3.11.0
+cython==3.2.5
+sympy==1.14.0
+pyinstaller

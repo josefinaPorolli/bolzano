@@ -1,294 +1,232 @@
-# Calculadora de Dominio y Raíces — `restricciones.py` + `BuscadorDeIntervalo.py`
+# Ilustre del método de Bolzano
 
-Sistema modular en Python para analizar funciones matemáticas escritas como strings. Dado un string como `"(e**x+sqrt(x+1)*x*3)/x"`, el sistema calcula automáticamente el dominio real y busca intervalos donde existen raíces.
+**Análisis Numérico - Universidad de Mendoza**
+**Ciclo lectivo 2026**
+**Integrantes:** Tomás Joaquín Aguinaga Oggero, Josefina Porolli Serpa
+
+Herramienta en Python que, a partir de una función matemática escrita como texto (por ej. `"(e**x+sqrt(x+1)*x*3)/x"`), calcula su **dominio real**, encuentra automáticamente **intervalos donde aplicar el teorema de Bolzano** y ejecuta el **método de bisección** paso a paso — mostrando cada iteración en tabla y en una animación gráfica. Incluye una versión por **consola (CLI)** y una **interfaz gráfica (GUI)** en Tkinter, además de un instalador que empaqueta la GUI como ejecutable de Windows (`Bolzano.exe`).
+
+**Problemática resuleta:**
+
+En Análisis Numérico es habitual toparse con ecuaciones que no tienen solución algebraica exacta —o que directamente involucran funciones trascendentes (exponenciales, logarítmicas, trigonométricas)— donde despejar la incógnita a mano es inviable. Antes de siquiera intentar aproximar una raíz, hay dos problemas previos que suelen resolverse "a ojo" y a mano en la cursada:
+
+Determinar el dominio real de la función. Cualquier función con raíces, logaritmos, divisiones o funciones trigonométricas inversas tiene restricciones que hay que identificar y combinar correctamente (intersección de condiciones, exclusión de puntos, periodicidad). Hacerlo manualmente es tedioso y propenso a errores, sobre todo con funciones compuestas.
+Encontrar manualmente, por prueba y error, un intervalo [a, b] donde f(a) y f(b) tengan signos opuestos, condición necesaria para aplicar el teorema de Bolzano y garantizar que exista una raíz. Elegir mal ese intervalo (por ejemplo, por no darse cuenta de una asíntota o de que el intervalo cae fuera del dominio) lleva a resultados inválidos o directamente a que el método de bisección no converja.
+
+Este proyecto automatiza esas dos etapas previas —cálculo del dominio y búsqueda de un intervalo válido— y luego ejecuta el método de bisección paso a paso, permitiendo verificar visualmente (con la animación) cómo converge el algoritmo. De esta forma, un estudiante o docente puede ingresar cualquier función arbitraria y obtener de punta a punta el dominio, el intervalo de aplicación de Bolzano y la raíz aproximada, sin tener que resolver cada etapa a mano.
 
 ---
+
+## Estructura del repositorio
+
+```
+bolzano/
+├── README.md
+├── installer.bat          # script que arma el .exe con PyInstaller
+├── Bolzano.exe          # ejecutable ya generado
+├── micon.ico
+└── src/
+    ├── restricciones.py         # cálculo del dominio real de la función
+    ├── BuscadorDeIntervalos.py  # búsqueda de intervalos/raíces (Bolzano)aíces (Bolzano)
+    ├── funciones_bolzano.py     # método de bisección
+    ├── interfaz.py              # animación matplotlib del proceso (paleta Rosé Pine)
+    ├── CLI.py                   # programa por consola
+    ├── GUI.py                   # interfaz gráfica (la que empaqueta el instalador)
+    └── requirements.txt
+```
 
 ## Flujo general
 
 ```
 fn = "(e**x + sqrt(x+1)*x*3) / x"
-         │
-         ▼
-  restricciones.py
-  CalcularDominio(fn)
-         │
-         ▼
-  dominio = "D: {[-1,0), (0,∞)}"
-         │
-         ▼
-    BuscadorDeIntervalo.py
-  BuscarIntervalosRaiz(fn, dominio)
-         │
-         ▼
-  [(-1, 0), (0, 1)]   ← lista de intervalos o raíces exactas
+        │
+        ▼
+restricciones.py → CalcularDominio(fn)
+        │
+        ▼
+dominio = D: (-∞,0) ∪ [-1,0) ...  (objeto sympy.Set)
+        │
+        ▼
+BuscadorDeIntervalos.py → BuscarIntervalosRaiz(fn, dominio)
+        │
+        ▼
+[(-1, 0), (0, 1), None, ...]   ← un intervalo/raíz/None por cada tramo del dominio
+        │
+        ▼
+funciones_bolzano.py → iterar(fn, a, b, n)  (bisección)
+        │
+        ▼
+resultado + historial de iteraciones → mostrado en CLI o animado en GUI (interfaz.py)
 ```
 
 ---
 
-## Módulo 1: `restricciones.py`
+## Módulo 1: `restricciones.py` — Dominio de la función
 
-### ¿Qué hace?
+Calcula el **dominio real** de la función. Usa como base `sympy.calculus.util.continuous_domain` y, si esa vía falla, recurre a un análisis propio recursivo de la expresión (revisa cada `sqrt`, `log`, `asin`/`acos`, división, etc. y arma las condiciones correspondientes).
 
-Calcula el **dominio real** de una función analizando su estructura sintáctica. No usa un CAS para parsear la expresión — la recorre carácter por carácter, identifica términos, factores y funciones, y aplica las restricciones matemáticas conocidas.
-
-### Cómo lee la función
-
-La función se recorre en capas:
-
-1. **Separación en términos** — se corta por `+` o `-` que estén en el nivel raíz (fuera de paréntesis). Así `e**x + sqrt(x+1)*x` da dos términos: `e**x` y `sqrt(x+1)*x`.
-
-2. **Separación en factores** — cada término se corta por `*` o `/`, respetando `**` (potencia) como operador indivisible. Así `sqrt(x+1)*x*3` da tres factores: `sqrt(x+1)`, `x`, `3`.
-
-3. **Detección de argumento** — si un factor tiene paréntesis, se extrae su interior. Para `sqrt(x+1)` el argumento es `x+1`.
-
-> **Regla de paréntesis:** un grupo como `(x+1)` se trata como una unidad en la capa actual. Sus subexpresiones solo se analizan si el grupo entero es un factor con nombre de función reconocida (como `sqrt`) o si es un paréntesis puro `(...)` sin nombre adelante.
-
-### Restricciones aplicadas
+**Restricciones que reconoce:**
 
 | Función | Restricción |
 |---|---|
-| `sqrt(a)` | `a >= 0` |
-| `log(a)` | `a > 0` |
-| `asin(a)` | `-1 <= a <= 1` |
-| `acos(a)` | `-1 <= a <= 1` |
+| `sqrt(a)` | `a ≥ 0` |
+| `log(a)` / `log(a, base)` | `a > 0` (y `base > 0`, `base ≠ 1` si la base depende de x) |
+| `asin(a)`, `acos(a)` | `-1 ≤ a ≤ 1` |
 | `a / b` | `b ≠ 0` |
+| `tan(a)`, `sec(a)` | `cos(a) ≠ 0` |
+| `cot(a)`, `csc(a)` | `sin(a) ≠ 0` |
 
-Las funciones sin restricción (`sin`, `cos`, `tan`, `exp`, `sinh`, `cosh`, etc.) se reconocen como atómicas y no generan ninguna condición.
+Las funciones trigonométricas dan lugar a **exclusiones periódicas** (por ej. `tan(x)` excluye infinitos puntos). El módulo detecta cuando dos series periódicas de sympy corresponden en realidad a un único período menor y las fusiona (`fusionar_periodicos`), para que el dominio se muestre de forma compacta.
 
-### Recursión
-
-El análisis es **recursivo**: cuando se encuentra una función con restricción, se aplica la condición sobre su argumento y luego se analiza ese argumento como si fuera una nueva función completa. Esto permite manejar composiciones como `sqrt(log(x))`:
-
-- `sqrt(log(x))` → restricción: `log(x) >= 0`
-- argumento `log(x)` → restricción: `x > 0`
-- resultado: `x > 0` y `log(x) >= 0` → dominio: `x >= 1`
-
-### Resolución del dominio
-
-Una vez obtenidas todas las condiciones como inecuaciones (`x+1 >= 0`, `x ≠ 0`, etc.), se resuelven con `sympy` y se intersectan sucesivamente sobre los reales.
-
-### Formato de salida
-
-El dominio se devuelve como string con la notación de intervalos estándar:
+**Salida:** el dominio es un objeto `sympy.Set` (`Interval`, `Union`, `Complement`, etc.), formateado a texto legible con `formatear_dominio`, por ejemplo:
 
 ```
-D: {[-1,0), (0,∞)}
+D: ℝ - {π/2 + nπ : n∈ℤ}
+D: [-1,0) ∪ (0,∞)
 ```
 
-- `[` y `]` indican extremo cerrado (incluido)
-- `(` y `)` indican extremo abierto (excluido)
-- `∞` y `-∞` para infinitos
-- Múltiples intervalos separados por `, ` dentro de `{}`
+**Funciones públicas principales:**
 
-### Ejemplos
+- `preparar_funcion(fn: str) -> sp.Expr` — parsea el string a expresión sympy.
+- `CalcularDominio(fn) -> sp.Set` — dominio real de la función.
+- `formatear_dominio(dominio) -> str` — texto legible del dominio.
+- `intervalo_en_dominio(dominio, a, b) -> bool` — valida que `[a,b]` esté contenido en el dominio.
 
-| Función | Condiciones | Dominio |
-|---|---|---|
-| `sqrt(x+1)` | `x+1 >= 0` | `D: {[-1,∞)}` |
-| `log(x)` | `x > 0` | `D: {(0,∞)}` |
-| `e**x/x` | `x ≠ 0` | `D: {(-∞,0), (0,∞)}` |
-| `(e**x+sqrt(x+1)*x*3)/x` | `x ≠ 0`, `x+1 >= 0` | `D: {[-1,0), (0,∞)}` |
-| `sin(x-1)` | _(ninguna)_ | `D: {(-∞,∞)}` |
-| `asin(x)/sqrt(x)` | `-1<=x<=1`, `x>=0`, `x≠0` | `D: {(0,1]}` |
+---
 
-### Uso
+## Módulo 2: `BuscadorDeIntervalos.py` — Búsqueda de subintervalos contenedores de raíces
 
-```python
-import restricciones as r
+Recibe el dominio ya calculado y busca, **en cada tramo continuo por separado**, un intervalo donde `f(a)·f(b) < 0` (condición del teorema de Bolzano) o directamente una raíz exacta.
 
-fn = "(e**x + sqrt(x+1)*x*3) / x"
-dominio = r.CalcularDominio(fn)
-print(dominio)
-# D: {[-1,0), (0,∞)}
+Estrategia según el tipo de tramo:
+
+| Tramo | Estrategia |
+|---|---|
+| `[a, b]` acotado | lo divide en **99 secciones** iguales y evalúa signo en cada extremo |
+| con algún borde abierto | igual, pero se corre `1e-6` hacia adentro del borde abierto antes de evaluar |
+| `[a, ∞)` / `(-∞, b]` | **búsqueda exponencial** (`a+2ⁿ`, hasta 32 pasos) hacia el infinito correspondiente |
+| `(-∞, ∞)` | búsqueda exponencial **simétrica** desde `x=0`, a derecha e izquierda a la vez |
+
+Puntos adicionales:
+
+- Si `|f(x)|` supera un umbral (`1e6`) se descarta como posible asíntota, no como dato válido.
+- Si un cambio de signo detectado coincide con un punto excluido del dominio (por ej. una asíntota), se descarta: no es una raíz, es un salto de discontinuidad.
+- `BuscarIntervalosRaiz(fn, dominio)` devuelve una **lista**, un elemento por cada tramo del dominio: un número (raíz exacta), una tupla `(a, b)` (intervalo con cambio de signo) o `None` (no se encontró nada en ese tramo).
+
+---
+
+## Módulo 3: `funciones_bolzano.py` — Método de bisección
+
+Implementa la bisección clásica sobre el intervalo `[a, b]` elegido:
+
+- `cantidad_iteraciones(a, b, tolerancia)` — calcula cuántas iteraciones `n` hacen falta para que `(b-a)/2ⁿ < tolerancia`.
+- `iterar(funcion, a, b, n)` — ejecuta hasta `n` iteraciones (o corta antes si encuentra una raíz exacta), devolviendo el resultado final y el **historial** completo `(a, b, x)` de cada paso.
+- Todo el cálculo usa `sympy.Float` con 64 dígitos de precisión.
+
+---
+
+## Módulo 4: `interfaz.py` — Animación del proceso
+
+Contiene la lógica de graficado con `matplotlib` (paleta oscura "Rosé Pine") reutilizada tanto por la CLI como por las GUI:
+
+- Dibuja la función, marca cada iteración de la bisección (intervalo, punto medio) y anima la convergencia con `FuncAnimation`.
+- Maneja también el caso de raíz exacta encontrada sin iterar (`mostrar_raiz_exacta`).
+
+---
+
+## `CLI.py` — Versión por consola
+
+Flujo interactivo:
+
+1. Pide la función y la valida (reintenta si la sintaxis es inválida).
+2. Calcula y muestra el dominio.
+3. Pregunta si el usuario quiere ingresar manualmente un intervalo `[a, b]`, o si prefiere que el programa busque uno automáticamente con `BuscarIntervalosRaiz` (mostrando las opciones encontradas por tramo para elegir).
+4. Valida que el intervalo cumpla `f(a)·f(b) < 0`.
+5. Pide tolerancia deseada o cantidad de iteraciones.
+6. Ejecuta la bisección y muestra cada iteración (`intervalo`, `x`, `f(x)`) y el resultado final.
+
+Ejecutar:
+
+```bash
+cd src
+python CLI.py
 ```
 
 ---
 
-## Módulo 2: `BuscadorDeIntervalo.py`
+## `GUI.py` — Interfaz gráfica
 
-### ¿Qué hace?
+Aplicación Tkinter en pantalla completa que sigue el mismo flujo que `CLI.py` pero por pasos guiados (wizard), reutilizando toda la lógica de los módulos anteriores sin modificarlos:
 
-Dado el dominio calculado por `restricciones.py`, busca **intervalos donde existe al menos una raíz** (un valor de `x` donde `f(x) = 0`). Aplica el **teorema de Bolzano**: si `f(x₀) * f(x₁) < 0` en un intervalo `[x₀, x₁]`, entonces existe al menos una raíz en ese intervalo.
+- **Panel izquierdo:** gráfico en vivo de la función (se actualiza al definir el intervalo) y, debajo, los controles del paso actual.
+- **Panel derecho:** tabla de equivalencias de sintaxis matemática y la función actualmente cargada.
+- **Pasos:** 1) ingresar función y calcular dominio → 2) elegir intervalo (manual o automático) → 3) elegir criterio de corte (tolerancia / cantidad de iteraciones) → 4) calcular la raíz → 5) ver la tabla de iteraciones y reproducir la animación del proceso.
 
-### Estrategia por tipo de intervalo
+- **`GUI.py`** — versión original, es la que empaqueta actualmente `instaler.bat` en el ejecutable. La animación se abre en una ventana aparte de matplotlib con botones "Reiniciar"/"Cerrar" superpuestos.
 
-El módulo analiza cada intervalo del dominio por separado y aplica una estrategia diferente según su forma:
+Ejecutar cualquiera de las dos:
 
----
-
-#### Intervalo cerrado `[a, b]`
-
-Divide el intervalo en **9 secciones iguales** de tamaño `(b-a)/9` y evalúa el signo en cada extremo de sección. Si hay cambio de signo, reporta esa sección.
-
-```
-[a ----+----+----+----+----+----+----+----+---- b]
-  sec1  sec2  sec3  ...                      sec9
-```
-
-**Ejemplo:** `[-1, 8]` con `f(x) = x² - 4`
-
-- sección `[-1, 0]`: `f(-1)=−3`, `f(0)=−4` → sin cambio
-- sección `[0, 1]`: `f(0)=−4`, `f(1)=−3` → sin cambio
-- sección `[1, 2]`: `f(1)=−3`, `f(2)=0` → **raíz exacta en x=2**
-- ...
-
----
-
-#### Intervalo semiabierto `(a, b)`, `[a, b)`, `(a, b]`
-
-Igual que el cerrado, pero los extremos abiertos se desplazan una **milésima** hacia adentro antes de dividir en 9:
-
-- `(a, b)` → trabaja sobre `[a+0.001, b-0.001]`
-- `[a, b)` → trabaja sobre `[a, b-0.001]`
-- `(a, b]` → trabaja sobre `[a+0.001, b]`
-
-Esto evita evaluar en puntos excluidos del dominio (como denominadores que se anulan).
-
----
-
-#### Intervalo semiabierto hacia el infinito `[a, ∞)` o `(a, ∞)`
-
-Usa **búsqueda exponencial hacia la derecha**: evalúa `f(a)` y luego `f(a + 2ⁿ)` para `n = 0, 1, 2, ..., 11` (máximo 12 pasos). Se detiene al encontrar la primera raíz o intervalo con cambio de signo.
-
-```
-a, a+1, a+2, a+4, a+8, a+16, ..., a+2048
-```
-
-Si el extremo `a` es abierto, se suma la milésima antes de empezar.
-
-**Ejemplo:** `[0, ∞)` con `f(x) = x - 3`
-
-- `f(0) = -3`, `f(1) = -2` → sin cambio
-- `f(0) = -3`, `f(2) = -1` → sin cambio
-- `f(0) = -3`, `f(4) = 1` → **cambio de signo → intervalo `(0, 4)`**
-
----
-
-#### Intervalo semiabierto hacia el infinito negativo `(-∞, b]` o `(-∞, b)`
-
-Igual pero **hacia la izquierda**: evalúa `f(b)` y luego `f(b - 2ⁿ)` para `n = 0, 1, ..., 11`.
-
----
-
-#### Intervalo total `(-∞, ∞)`
-
-**Búsqueda exponencial simétrica** desde `x = 0`: simultáneamente busca hacia la derecha (`0 + 2ⁿ`) y hacia la izquierda (`0 - 2ⁿ`), con máximo 12 pasos en cada dirección. Se detiene en cada dirección al encontrar la primera raíz.
-
-```
-... -2048, -1024, ..., -2, -1, 0, 1, 2, ..., 1024, 2048 ...
+```bash
+cd src
+python GUI.py
 ```
 
 ---
 
-### Raíces exactas
+## Generar el ejecutable (`instaler.bat`)
 
-En cualquier punto evaluado durante la búsqueda, si `f(x) = 0` exactamente, el punto se agrega directamente a la lista de resultados como número suelto (no como tupla) y la búsqueda en esa dirección se detiene.
+En Windows, `instaler.bat`:
 
----
+1. Crea un entorno virtual e instala `src/requirements.txt`.
+2. Empaqueta `src/GUI.py` con PyInstaller (`--onefile --windowed`, ícono `micon.ico`) en `Bolzonaro.exe`.
+3. Limpia los archivos temporales de build.
 
-### Formato de salida
-
-`BuscarIntervalosRaiz` devuelve una **lista** donde cada elemento es:
-
-- Un **número** (`float` o `int`) si se encontró una raíz exacta
-- Una **tupla `(a, b)`** si se encontró un intervalo con cambio de signo
-
-```python
-[1, (-4, 0), (3.5, 4.0)]
-#  ^raíz      ^intervalo   ^intervalo
-```
-
-Para decodificar desde main:
-
-```python
-for item in intervalos:
-    if isinstance(item, tuple):
-        print(f"Intervalo con raíz: [{round(item[0],6)}, {round(item[1],6)}]")
-    else:
-        print(f"Raíz exacta: x = {round(item, 6)}")
+```bat
+instaler.bat
 ```
 
 ---
 
-### Ejemplos completos
+## Sintaxis de funciones aceptada
 
-**`sin(x - 1)`** — dominio `(-∞, ∞)`
-
-```
-Búsqueda simétrica desde 0:
-  f(0) = sin(-1) ≈ -0.841
-  derecha: f(1) = sin(0) = 0 → Raíz exacta en x = 1
-  izquierda: f(-4) = sin(-5) ≈ 0.959 → cambio de signo con f(0) → intervalo (-4, 0)
-Resultado: [1, (-4, 0)]
-```
-
-**`x**2 - 2`** — dominio `(-∞, ∞)`
-
-```
-Búsqueda simétrica desde 0:
-  f(0) = -2
-  derecha: f(2) = 2 → cambio de signo → intervalo (0, 2)
-  izquierda: f(-2) = 2 → cambio de signo → intervalo (-2, 0)
-Resultado: [(-2, 0), (0, 2)]
-```
-
-**`e**x / x`** — dominio `(-∞, 0), (0, ∞)`
-
-```
-Intervalo (-∞, 0): búsqueda exponencial izquierda desde -0.001
-  f(-0.001) ≈ -1000 → nunca cambia de signo
-Intervalo (0, ∞): búsqueda exponencial derecha desde 0.001
-  f(0.001) ≈ 1001 → nunca cambia de signo
-Resultado: []  ← sin raíces reales
-```
-
----
-
-## Uso completo desde `main.py`
-
-```python
-import restricciones as r
-import BuscadorDeIntervalo as b
-
-fn = input("Introduce la función: ")
-
-dominio = r.CalcularDominio(fn)
-print(f"Dominio: {dominio}")
-
-intervalos = b.BuscarIntervalosRaiz(fn, dominio)
-
-if not intervalos:
-    print("No se encontraron raíces.")
-else:
-    for item in intervalos:
-        if isinstance(item, tuple):
-            print(f"Intervalo con raíz: [{round(item[0],6)}, {round(item[1],6)}]")
-        else:
-            print(f"Raíz exacta: x = {round(item, 6)}")
-```
-
----
-
-## Sintaxis de funciones aceptadas
-
-Las funciones deben escribirse en sintaxis Python/SymPy:
+Las funciones se escriben en sintaxis Python/SymPy:
 
 | Matemática | String a ingresar |
 |---|---|
 | eˣ | `e**x` |
 | x² | `x**2` |
-| √(x+1) | `sqrt(x+1)` |
-| ln(x) | `log(x)` |
-| sen(x) | `sin(x)` |
-| arcsen(x) | `asin(x)` |
-| arccos(x) | `acos(x)` |
+| ⁿ√x | `x**(1/n)` |
+| √x | `sqrt(x)` |
+| ln(x) | `log(x)` o `ln(x)` |
+| logₙ(x) | `log(x, n)` |
+| sin, cos, tan | `sin(x)`, `cos(x)`, `tan(x)` |
+| asin, acos, atan | `asin(x)`, `acos(x)`, `atan(x)` |
+| sec, csc, cot | `sec(x)`, `csc(x)`, `cot(x)` |
+| sinh, cosh, tanh, sech, csch, coth | igual que las trigonométricas, con sufijo `h` |
 | (f·g)/h | `(f*g)/h` |
+
+---
+
+## Requisitos
+
+```
+matplotlib==3.11.0
+cython==3.2.5
+sympy==1.14.0
+pyinstaller
+```
+
+```bash
+pip install -r src/requirements.txt
+```
 
 ---
 
 ## Limitaciones conocidas
 
-- La búsqueda exponencial tiene un máximo de **12 pasos** (llega hasta `2¹¹ = 2048` unidades desde el origen). Funciones con raíces muy lejanas del origen pueden no ser detectadas.
-- Si la función tiene infinitas raíces (como `sin(x)`), solo se reportan las primeras encontradas en cada dirección.
-- La detección de raíz exacta depende de precisión numérica flotante; raíces irracionales no se detectan como exactas sino como intervalos.
+- La búsqueda exponencial de intervalos tiene un máximo de 32 pasos; raíces extremadamente alejadas del origen pueden no detectarse.
+- Si la función tiene infinitas raíces (como `sin(x)`), solo se reporta la primera encontrada en cada tramo/dirección.
+- La detección de "raíz exacta" depende de precisión numérica flotante (64 decimales significativos); raíces irracionales se reportan como intervalo, no como valor exacto.
+- En `GUI.py` (versión empaquetada en el `.exe`), la ventana de animación usa botones superpuestos sobre la figura de matplotlib en vez de estar embebidos nativamente.
+
+Link del repositorio: [text](https://github.com/josefinaPorolli/bolzano)
